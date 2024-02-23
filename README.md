@@ -1,2 +1,2 @@
-This repo is a python test on GitHub
+#Toujours disponible pour de nouvelles connaissances
 # projets
