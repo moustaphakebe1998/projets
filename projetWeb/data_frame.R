@@ -25,8 +25,8 @@ new_data<-data.frame(
   stringsAsFactors = FALSE 
   )
 
-write.csv(new_data,"naw_data_hepatitis.csv",row.names = FALSE)
-df<-read.csv("naw_data_hepatitis.csv",header = TRUE,stringsAsFactors = TRUE)
+write.csv(new_data,"new_data_hepatitis.csv",row.names = FALSE)
+df<-read.csv("new_data_hepatitis.csv",header = TRUE,stringsAsFactors = TRUE)
 str(df)
 summary(df)
 library(Factoshiny)
