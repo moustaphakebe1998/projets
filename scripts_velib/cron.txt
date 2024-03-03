@@ -1,0 +1,3 @@
+*/5 * 18-21 11 * /home/kebe/CodeDataScience/velib.sh
+*/5 * 18-21 11 * /home/kebe/CodeDataScience/velib.py
+*/5 * 18-21 11 * /home/kebe/CodeDataScience/velib.R
