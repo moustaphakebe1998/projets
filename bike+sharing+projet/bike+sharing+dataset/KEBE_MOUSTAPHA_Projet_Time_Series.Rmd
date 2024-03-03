@@ -1,0 +1,444 @@
+
+KEBE MOUSTAPHA
+PROJET TIME SERIES
+
+```{r echo=TRUE}
+library(TSstudio)
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyverse)
+library(dygraphs)
+library(forecast)
+library(stats)
+library(tseries)
+```
+
+
+Chargement des deux jeux de données
+```{r echo=TRUE}
+setwd("C:/Users/KEBE/Documents/A-DataScience/Time-serie/bike+sharing+dataset")
+day<-read.csv("day.csv",header = TRUE,sep=",")
+head(day,n=10)
+dim(day)
+hour<-read.csv("hour.csv",header = TRUE,sep=",")
+head(hour)
+
+```
+```{r}
+list(colnames(day))
+list(colnames(hour))
+```
+
+Comment évoluent les températures au fil des saisons ? Quelles
+sont les températures moyennes et médianes ?
+#saisons sont:
+#  1 : printemps,
+#  2 : été,
+# 3 : automne,
+#  4 : hiver.
+
+```{r echo=TRUE}
+#Avec les données de day
+temps_saison<-day %>%
+  group_by(season) %>%
+  summarise(mean_temp = mean(temp), median_temp = median(temp)) %>%
+print(temps_saison)
+```
+
+```{r echo=TRUE}
+#Avec les données de hour
+
+temps_saison_<-hour %>%
+  group_by(season) %>%
+  summarise(mean_temp = mean(temp), median_temp = median(temp)) %>%
+print(temps_saison_)
+  
+```
+
+#-On constate que la température(normalisée en Celsius) augment en fonction de la saison .
+#Cette evolution est trés considérable durant automne (3) avec une moyenne de 0.706 et une mediane de 0.70
+
+
+#- Le nombre de locations de vélos atteint son maximum au milieu de l'année (saison été - automne), il se peut qu'en raison des conditions météorologiques et de la température extérieure, il soit confortable d'utiliser le vélo comme moyen de transport.
+
+
+#On peut visualiser le comportement de la température normalisée en Celsius en fonction des différentes saisons.
+```{r echo=TRUE}
+
+ordre_saisons <- c("(1 : printemps", "2 : été", "3 : automne", "4 : hiver")
+plot(temps_saison$season, temps_saison$mean_temp, 
+     xlab = "Saison", ylab = "Température moyenne",
+     xaxt = "n", type = "l", col = "blue", ylim = range(temps_saison$mean_temp))
+axis(1, at = 1:4, labels = ordre_saisons)
+legend("topleft", legend = "Température moyenne", col = "blue", lty = 1)
+
+```
+
+Question:
+Existe-t-il une corrélation entre temp/atemp/mean.temp.atemp et le
+nombre total de locations de vélos ?
+
+Réponse:
+
+```{r echo=TRUE}
+
+cor(hour[,c("temp", "atemp", "cnt")])
+
+ggplot(hour, aes(x = temp, y = cnt)) +
+  geom_point(col='red') +
+  labs(x = "Température", y = "Nombre total de locations de vélos", title = "   Corrélation entre température et nombre de locations de vélos") 
+
+```
+
+Dans ce nuage de pont on note une trés forte corrélation entre la temperature et le nombre de locations de vélos .
+On constate qu'il y'a plus de locations de vélos si la température est aux environs de 
+[0.25,0.70]°C que lorsqu'elle est faible(< 25 °C).
+
+
+Quelle est la température moyenne, l’humidité, la vitesse du vent et
+le total des locations par mois ?
+
+```{r echo=TRUE}
+#Avec Hour
+mois_stats_hour<-hour %>%
+  group_by(mnth) %>%
+  summarise(mean_temp=mean(temp),
+            mean_humidité=mean(hum),
+            mean_wind_speed = mean(windspeed),
+            total_cnt = sum(cnt))
+mois_stats_hour
+#Avec Day
+mois_stats_day<-day %>%
+  group_by(mnth) %>%
+  summarise(mean_temp=mean(temp),
+            mean_humidité=mean(hum),
+            mean_wind_speed = mean(windspeed),
+            total_cnt = sum(cnt))
+mois_stats_day
+
+# ces deux tableaux resument les moyennes de température , de l’humidité, de la vitesse du vent et le total des locations par mois 
+```
+
+
+#La température est-elle associée à la location de vélos (enregistrée ou occasionnelle) ?
+
+#D'aprés le résultat de ce tableau de données nous pouvons affirmer que :
+#Pour les  temperatures(normalisée en Celsius) dont la moyenne est  < 0.30 le nombre totals de location de vélos (enregistrée ou occasionnelle) (<=151352) est toujours plus faible que lorsque la moyenne de température est compris entre [0.47,0.755] où le nombre de locations est compris entre 228920 à 351194.On enregistre une trés grande location de vélos .
+
+#Je visualise la relation entre la température et la location de vélos en fonction du mois avec ce dygraph d'une maniére interactive.
+
+```{r echo=TRUE}
+#j'utilise mois_stats_day
+dygraph(mois_stats_day,x="mnth") %>%
+  dyAxis("y", label = "nombre total de vélos de location,") %>%
+  dySeries("total_cnt",label ="Locations-vélos" ,axis = "y",color = "red") %>%
+  dyOptions(stackedGraph = FALSE) %>%
+  dyAxis("y2", label = "Température") %>%
+  dySeries("mean_temp",label = "Température",axis = "y2",color = "blue")
+
+```
+
+
+
+#Dans ce qui suit, nous vous proposons de construire un modèle prédictif du nombre de vélos partagés par jour (noms de variables quotidiennes __cnt_).
+#Tracez le cnt par rapport au jour et examinez ses modèles et ses irrégularités.
+
+```{r echo=TRUE}
+cnt_day<-day %>%
+  select(dteday,cnt) %>%
+  arrange(dteday) %>%
+  mutate(dteday = as.Date(dteday)) %>% 
+  column_to_rownames(var = "dteday")
+cnt_day
+#cnt_day<-cnt_day %>%
+ # select(cnt)
+
+```
+#Distribution de la location de vélos.
+
+```{r echo=TRUE}
+h <- hist(day$cnt, breaks = 25, ylab = 'Frequency of Rental', xlab = 'Total Bike Rental Count', main = 'Distribution of Total Bike Rental Count', col = 'blue' )
+
+xfit <- seq(min(day$cnt),max(day$cnt), length = 50)
+yfit <- dnorm(xfit, mean =mean(day$cnt),sd=sd(day$cnt))
+yfit <- yfit*diff(h$mids[1:2])*length(day$cnt)
+lines(xfit,yfit, col='red', lwd= 3)
+```
+
+#On transforme nos données en Time-Séries
+```{r echo=TRUE}
+cnt_day_ts <- ts(data = cnt_day,
+              frequency = 30)
+plot(cnt_day_ts)
+
+
+```
+
+#En observant notre série temporaire on observe une tendance de meme qu'une saisonnalitée de notre serie temporelle. 
+
+
+
+
+
+#Nettoyez les valeurs aberrantes ou manquantes:
+#Dans notre cas il n'y a pas de données manquantes 
+
+```{r echo=TRUE}
+anyNA(day$cnt)
+```
+#S'il y'avait des valeurs manquantes ou aberrantes on peut utiliser le code suivant pour les remplacer.
+```{r echo=TRUE}
+qnt <- quantile(cnt_day_ts, probs=c(.25, .75), na.rm = TRUE)
+iqr <- IQR(cnt_day_ts, na.rm = TRUE)
+threshold <- 1.5 * iqr
+ts_data_clean <- ifelse(cnt_day_ts< (qnt[1] - threshold) | cnt_day_ts> (qnt[2] + threshold), NA, cnt_day_ts)
+# Gérer les données manquantes - par exemple, remplir les NA avec des valeurs moyennes
+ts_data_clean[is.na(ts_data_clean)] <- mean(ts_data_clean, na.rm = TRUE)
+```
+
+
+#Vous allez maintenant utiliser la version lissée de cnt :choisissez la méthode de lissage et justifiez votre choix.
+#Nos données présentent à la fois une tendance  et une saisonnalité, le modèle de Holt-Winters peut être efficace pour capturer ces deux composantes.
+
+
+```{r echo=TRUE}
+
+model_hw <- HoltWinters(cnt_day_ts,seasonal = "additive")
+model_hw
+plot(model_hw)
+
+```
+
+
+#QUESTION:
+
+Que pourriez-vous dire de cette nouvelle série temporelle en
+termes de stationnarité et de saisonnalité ? Justifiez vos
+conclusions.
+
+#REPONSE:
+
+#Pour répondre à cette question:
+
+#J'utilise le adf.test() pour vérifier l'hypothèse de stationnarité en utilisant des hypothèses:
+
+#H0: les données ne sont pas stationnaires
+#H1: les données sont stationnaires
+
+#avec une valeur p <0,05 (alpha), signifie que H0 est rejeté
+
+```{r echo=TRUE}
+adf.test(cnt_day_ts)
+```
+#Résultat et interprétation :
+#- la p_value >  0,05 signifie que les données ne sont pas stationnaires 
+#- nous devons faire une différenciation pour la rendre stationnaire
+#-Ce pendant en observant notre serie temporelle il exite aussi une saisonnalité 
+
+#- La tendance de la location de vélos est à la hausse entre 2011 et 2012 
+
+#- Le nombre de locations de vélos atteint son apogée au milieu de l'année (saison été - automne), il se peut qu'en raison des conditions météorologiques et de la température extérieure, il soit confortable d'utiliser le vélo comme moyen de transport
+#- Les données ont un type de tendance, saisonnier et additif
+
+#- À partir des données affichées, nous allons utiliser le modèle Triple Exponential Smoothing et ARIMA
+
+
+Questions:
+#Pourriez-vous modéliser la série temporelle lissée à l'aide du
+# modèle ARIMA :
+# Quels sont les modèles candidats
+# Choisissez votre modèle et justifiez votre choix
+ 
+Réponses:
+
+#En se basant sur ACF et PACF ci-dessous,
+#les modéles candidats sont :ARIMA(1,0,1),ARIMA(2,0,1),ARIMA(3,0,1),ARIMA(4,0,1),..etc
+#J'ai choisit le modéle ARIMA(1,0,1)
+```{r echo=TRUE}
+# Calcule de l'ACF et PACF des résidus
+acf(residuals(model_hw), main = "ACF des résidus du modèle Holt-Winters")
+pacf(residuals(model_hw), main = "PACF des résidus du modèle Holt-Winters")
+
+```
+
+
+Facultatif(
+```{r echo=TRUE}
+cnt_day_ts %>% diff() %>% adf.test()
+```
+La p-value est <0,05 donc la serie est stationnaire aprés la differencition d'où d=1)
+
+
+
+#QUESTIONS:
+#Pourriez-vous modéliser la série temporelle lissée à l'aide du
+# modèle ARIMA :
+# Quels sont les modèles candidats?
+# Choisissez votre modèle et justifiez votre choix.
+
+
+#Je transforme cnt_ en une série temporelle de fréquence 30 nommée count_cnt pour le reste du projet.
+
+```{r echo=TRUE}
+count_cnt <- ts(cnt_day, frequency = 30)
+```
+#Je fait la decomposition.
+
+```{r echo=TRUE}
+decompose<- decompose(count_cnt)
+plot(decompose,col='blue')
+```
+
+#je supprime la seasonnalité
+
+```{r echo=TRUE}
+
+cnt_deseasonalized<-count_cnt - decompose$seasonal
+plot(count_cnt, col = "blue", xlab="Time by months")
+lines(cnt_deseasonalized,col="red")
+legend(1, 8600, legend=c("count_ma", "deseasonal_cnt"), col=c("blue", "red"), lty=1:2, cex=0.8)
+
+acf(cnt_deseasonalized,main="ACF")
+pacf(cnt_deseasonalized,main="PACF")
+
+```
+#cnt_deseasonalized n'est pas stationnaire il faut que j'applique la différenciation pour la rendre stationnaire.
+
+#Pour éliminer les tendances et les effets saisonniers, la différenciation est utilisée pour rendre la série temporelle plus stationnaire, facilitant ainsi l'application de modèles statistiques.
+
+```{r echo=TRUE}
+cnt_diff<-diff(cnt_deseasonalized,differences = 1)
+adf.test(cnt_diff, alternative = "stationary")
+```
+#La p-value <0.5 donc la serie devient stationnaire à la premiére différenciation adf.test renvoie également l'ordre de décalage q = 8, et nous avons d = 1.
+
+#D'après PACF, il est clair que dans les 6 décalages,l'AR est significatif. ce qui veut dire qu'on peut utiliser p = 6.
+
+```{r}
+acf(cnt_diff)
+pacf(cnt_diff)
+```
+
+#Les modèles candidats d'aprés le PACF et ACF :
+
+
+#Les modeles candidats sont:c(p,1,q) avec p et q dans [1,6],[1,8]
+
+#Je choisit celui qui la plus petite valeur de aic la plus petite.
+
+adf.test() renvoie également l'ordre de décalage q = 8, et nous avons d = 1.
+
+```{r echo=TRUE}
+aic.values <- c()
+for (p in (0:8)){
+  deseasonal_cnt_arima <- arima(cnt_deseasonalized, order = c(p,0,8))
+  aic.values <- c(aic.values, deseasonal_cnt_arima$aic)
+}
+
+
+```
+
+```{r echo=TRUE}
+which.min(aic.values)
+```
+Réponse: 
+#       Donc je choisit le modéle c(9,1,8) parce qu'il a la plus petite valeur d'aic.
+
+
+
+#Questions:
+Equiper un ARIMA avec Auto-ARIMA
+ Utilisez la fonction auto.arima() pour adapter un modèle ARIMA de
+ cnt désaisonnalisé
+ Vérifiez les résidus. Quelles sont vos conclusions ?
+ 
+#Réponses:
+```{r echo=TRUE}
+model_autorima<-auto.arima(cnt_deseasonalized,seasonal = FALSE)
+model_autorima
+checkresiduals(model_autorima)
+```
+En plus on constate que ce modéle est bien meilleur parce qu'il minimise les erreurs.
+
+
+
+#Calculer les prévisions en utilisant le modèle choisi tracer à la fois la série chronologique originale et la série chronologique prévue
+```{r echo=TRUE}
+model_arima2 <- arima(cnt_deseasonalized, order = c(9, 0,8 ))  
+
+forecast_values <- forecast(model_arima2) 
+plot(forecast_values, xlab = "Date", ylab = "Nombre de vélos", main = "Prévisions avec modèle ARIMA")
+lines(cnt_day_ts, col = "blue") 
+```
+#Quéstions:
+
+Prévision
+Divisez les données en séries temporelles d'entraînement et de test
+(test commençant à l'observation 700, utilisez la fenêtre de
+fonction)
+monter un modèle Arima, manuellement et avec Auto-Arima sur la
+partie formation
+
+#Réponses:
+
+```{r echo=TRUE}
+end.time = time(cnt_deseasonalized)[700]
+train.set <- window(cnt_deseasonalized, end=end.time)
+test.set <- window(cnt_deseasonalized, start=end.time)
+
+```
+
+```{r}
+head(train.set)
+head(test.set)
+```
+Monter un modèle Arima, manuellement et avec Auto-Arima sur la partie formation.
+
+```{r echo=TRUE}
+model.arima <- Arima(train.set, order=c(9, 1, 8))
+model.arima.fc <- forecast(model.arima, h=32)
+model.arima
+print(paste("Accuracy du modele Arima  : ", accuracy(model.arima.fc, test.set)[2,"RMSE"]))
+```
+
+```{r echo=TRUE}
+model.autoarima <- auto.arima(train.set,seasonal = FALSE)
+model.autoarima
+model.aotoarima.fc <- forecast(model.autoarima, h=32)
+print(paste("Accuracy modele Auto Arima : ", accuracy(model.aotoarima.fc, test.set)[2,"RMSE"]))
+```
+
+```{r}
+checkresiduals(model.arima)
+checkresiduals(model.autoarima)
+```
+
+
+```{r echo=TRUE}
+plot(cnt_deseasonalized, col="red") # original
+lines(fitted(model.arima), col="blue") # manuelle Arima
+legend(1, 8600, legend=c("Original", "modele  Arima obtenue manuellement"), col=c("red", "blue"), lty=1:2, cex=0.8)
+
+
+```
+
+```{r echo=TRUE}
+plot(cnt_deseasonalized,col="red")#originale
+lines(fitted(model.autoarima),col="yellow") # Auto Arima
+legend(1, 8600, legend=c("Original", "modele  Auto-Arima obtenue"), col=c("red", "yellow"), lty=1:2, cex=0.8)
+```
+Prédisez les 25 prochaines observations et tracez le ts original et celui prévu.
+
+ 
+```{r echo=TRUE}
+prevision.arima<-forecast(model.arima,h=25)
+prevision.autoarima<-forecast(model.autoarima,h=25)
+
+#par(mfrow=c(2,1))
+plot(prevision.arima, main = "Forecast avec model Arima obtenue manellement")
+plot(prevision.autoarima, main = "Forecast avec model Auto-Arima obtenue")
+```
+Qu'observez-vous ?
+ 
+Finalement on peut conclure que le modéle Arima obtenue manuellement fait des prévisions plus naturel et plus cohérentes que celui obtenue avec le Arima automatique.
