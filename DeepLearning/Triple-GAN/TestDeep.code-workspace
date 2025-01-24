@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": ".."
+		},
+		{
+			"path": "../../gen_ai"
+		},
+		{
+			"path": "../../BigData/M2 BIG DATA"
+		}
+	],
+	"settings": {}
+}
