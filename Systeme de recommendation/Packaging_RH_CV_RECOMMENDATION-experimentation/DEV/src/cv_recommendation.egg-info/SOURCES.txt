@@ -1,9 +1,0 @@
-pyproject.toml
-setup.cfg
-src/cv_recommendation.egg-info/PKG-INFO
-src/cv_recommendation.egg-info/SOURCES.txt
-src/cv_recommendation.egg-info/dependency_links.txt
-src/cv_recommendation.egg-info/requires.txt
-src/cv_recommendation.egg-info/top_level.txt
-src/cv_rh_kebe/__init__.py
-src/cv_rh_kebe/analyse.py
