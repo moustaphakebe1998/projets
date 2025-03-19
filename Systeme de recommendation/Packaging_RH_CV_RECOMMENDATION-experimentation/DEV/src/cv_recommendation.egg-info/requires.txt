@@ -1,0 +1,13 @@
+pandas
+numpy
+scikit-learn
+pymupdf
+fpdf
+sentence_transformers
+
+[dev]
+pytest
+sphinx
+
+[vis]
+matplotlib

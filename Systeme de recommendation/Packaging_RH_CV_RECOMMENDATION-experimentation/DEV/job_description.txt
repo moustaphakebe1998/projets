@@ -1,0 +1,19 @@
+Titre : Développeur Data Science Python (H/F)
+
+Nous recherchons un développeur Python expérimenté avec une expertise en analyse de données et machine learning.
+Le candidat idéal doit posséder :
+- Une solide expérience en Python et ses bibliothèques (pandas, scikit-learn, NumPy).
+- Une bonne maîtrise des algorithmes de Machine Learning et Deep Learning.
+- Une connaissance des bases de données SQL et NoSQL.
+- Une expérience en traitement du langage naturel (NLP) est un plus.
+- Python, R (FactoMineR, Shiny), SQL,NoSQL SAS, C, Java
+- Machine Learning , Deep Learning et GenAI
+- Modèles avancés  LSTM, CNN, RNN, GAN, Transformers, VAE, Apprentissage (supervisé, non supervisé et renforcement).
+- NLP & IA Générative  Traitement automatique de langage avec NLTK, spaCy, FastText, Camembert, RAG, LangChain. Ragas.
+- Outils et Frameworks : Azure ML, MLflow, Docker, FastAPI, Gradio, Streamlit.
+- ClOUD & MLOps :
+- Microsoft Certified: Azure Data Scientist Associate,
+- Base de données
+- SQL( PostgreSQL, Trino), NoSQL( MongoDB, Elasticsearch)
+- Pipelines de données
+- ETL (Apache NiFi, Apache Spark, Apache Beam), ELT DBT

@@ -1,0 +1,696 @@
+---
+title: "TP3 - Network Reconstruction and Analysis"
+author: "Mouhamed Fadel"
+date: "2025-01-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# 1. Network reconstruction with the hill-climbing approach
+
+## 1.1 Chargement et exploration des données
+
+```{r install_packages}
+# Installation des packages nécessaires
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+# Configuration de Bioconductor
+BiocManager::install(version = "3.18")
+
+# Installation des packages CRAN
+packages_cran <- c("bnlearn", "igraph", "qgraph", "pcalg")
+for (pkg in packages_cran) {
+    if (!require(pkg, character.only = TRUE)) {
+        install.packages(pkg)
+    }
+}
+
+# Installation des packages Bioconductor
+BiocManager::install(c("graph", "Rgraphviz", "RBGL", "miic"), update = FALSE)
+```
+
+```{r load_data}
+# Chargement des packages nécessaires
+library(bnlearn)
+library(igraph)
+library(qgraph)
+library(pcalg)
+library(miic)
+
+# Chargement des données
+data("cosmicCancer")
+
+# Affichage des dimensions
+print("Dimensions du jeu de données:")
+print(dim(cosmicCancer))
+
+# Aperçu des données
+print("Aperçu des premières lignes:")
+print(head(cosmicCancer))
+
+# Structure des données
+print("Structure des données:")
+str(cosmicCancer)
+```
+
+## 1.2 Premier essai du hill-climbing
+
+```{r first_hc}
+# Premier essai avec gestion des erreurs
+tryCatch({
+  hc_result <- hc(cosmicCancer)
+  print("Hill-climbing réussi du premier coup!")
+}, error = function(e) {
+  print("Erreur lors du hill-climbing initial:")
+  print(e)
+})
+```
+
+Pour appliquer l'approche hill-climbing aux données cosmicCancer, j'ai identifié deux problèmes principaux :
+
+1. La variable "esm1" n'a qu'un seul niveau, ce qui empêche l'algorithme de fonctionner car il requiert au moins deux états différents pour chaque variable.
+
+2. Certaines variables pourraient contenir des valeurs manquantes (NA).
+
+Pour résoudre ces problèmes, je propose de :
+- Supprimer les colonnes ayant des valeurs constantes (un seul niveau)
+- Supprimer les lignes contenant des valeurs manquantes
+- Convertir la variable "Ploidy" en facteur
+
+Ces prétraitements sont nécessaires avant de pouvoir appliquer l'algorithme hill-climbing de manière efficace sur ces données.
+
+## 1.3 Nettoyage des données
+
+```{r data_cleaning}
+# Suppression des lignes avec NA
+data_clean <- cosmicCancer[complete.cases(cosmicCancer), ]
+print("Nombre de lignes supprimées:")
+print(nrow(cosmicCancer) - nrow(data_clean))
+
+# Identification des variables avec NA
+print("Variables avec des NA:")
+print(colnames(cosmicCancer)[colSums(is.na(cosmicCancer)) > 0])
+
+# Conversion de Ploidy en facteur
+if(is.numeric(data_clean$Ploidy)) {
+  data_clean$Ploidy <- as.factor(data_clean$Ploidy)
+}
+
+# Suppression des variables constantes
+var_levels <- sapply(data_clean, function(x) length(unique(x)))
+constant_vars <- names(var_levels[var_levels == 1])
+if(length(constant_vars) > 0) {
+  data_clean <- data_clean[, !colnames(data_clean) %in% constant_vars]
+  print("Variables constantes supprimées:")
+  print(constant_vars)
+}
+
+# Application du hill-climbing sur les données nettoyées
+hc_result <- hc(data_clean)
+```
+
+Proportion de données supprimées :
+
+8 échantillons sur 807 ont été supprimés, ce qui représente environ 1% du jeu de données
+
+Variable concernée par les valeurs manquantes :
+
+Seule la variable "Ploidy" contenait des valeurs manquantes (NA)
+
+Suite au nettoyage des données, 14 variables constantes ont été supprimées car elles n'avaient qu'un seul niveau :
+
+Gènes : esm1, ebf4, qscn6l1, cenpa, kntc2, orc6l, aytl2, peci, gstm3, cdkn2a, cdkn1a, foxo1, ppp2r2a, spdye7p
+
+Après ce prétraitement (suppression des NA et des variables constantes, conversion de Ploidy en facteur), l'algorithme hill-climbing a pu être appliqué avec succès sur les données nettoyées
+
+
+## 1.4 Visualisation du réseau et 1.5 Analyse du réseau
+
+```{r network_visualization}
+# Conversion en igraph
+graph <- as.igraph(hc_result)
+
+# Suppression des nœuds isolés
+deg <- degree(graph, mode="all")
+isolated_nodes <- names(which(deg == 0))
+if(length(isolated_nodes) > 0) {
+    graph <- delete_vertices(graph, isolated_nodes)
+    print("Nœuds isolés supprimés:")
+    print(isolated_nodes)
+}
+
+# Définition des couleurs des nœuds
+vertex_colors <- sapply(V(graph)$name, function(x) {
+    if(x == "Ploidy") {
+        "violet"
+    } else if(grepl("^[a-z]", x)) {
+        "yellow"  # gènes mutés (minuscules)
+    } else {
+        "green"   # gènes sur/sous-exprimés (majuscules)
+    }
+})
+
+# Création du layout
+set.seed(123)
+layout_matrix <- layout_with_fr(graph)
+
+# Visualisation du réseau
+plot(graph,
+     layout = layout_matrix,
+     vertex.color = vertex_colors,
+     vertex.size = 6,
+     vertex.label.cex = 0.5,
+     vertex.label.color = "black",
+     edge.arrow.size = 0.3,
+     edge.width = 1,
+     main = "Réseau d'altérations génomiques")
+
+# Analyse des connexions
+edges_df <- as_data_frame(graph, what="edges")
+
+# Identification des connexions mutation-expression
+mutation_expression_edges <- edges_df[
+    (grepl("^[a-z]", edges_df$from) & grepl("^[A-Z]", edges_df$to)) |
+    (grepl("^[a-z]", edges_df$to) & grepl("^[A-Z]", edges_df$from)),
+]
+
+# Analyse des connexions avec Ploidy
+ploidy_edges <- edges_df[
+    edges_df$from == "Ploidy" | edges_df$to == "Ploidy",
+]
+
+# Calcul des mesures de centralité
+betweenness_scores <- betweenness(graph)
+edge_betweenness_scores <- edge_betweenness(graph)
+
+# Affichage des résultats
+cat("\nConnexions entre mutations et expressions:\n")
+print(mutation_expression_edges)
+
+cat("\nConnexions avec Ploidy:\n")
+print(ploidy_edges)
+
+cat("\nTop 10 nœuds par centralité d'intermédiarité:\n")
+print(head(sort(betweenness_scores, decreasing=TRUE), 10))
+
+cat("\nTop 10 arêtes par centralité d'intermédiarité:\n")
+edge_df_with_betweenness <- data.frame(
+    from = edges_df$from,
+    to = edges_df$to,
+    betweenness = edge_betweenness_scores
+)
+print(head(edge_df_with_betweenness[order(edge_df_with_betweenness$betweenness, decreasing=TRUE),], 10))
+```
+
+
+D'après les résultats obtenus, voici l'analyse du réseau d'altérations génomiques :
+
+1. Nœuds isolés : 19 gènes ont été identifiés comme isolés (degré 0) et retirés du graphe, incluant bbc3, melk, ext1, mmp9, etc.
+
+2. Principales connexions :
+- Mutations-expressions : de nombreuses connexions partent du gène TP53 muté, qui est connecté à plusieurs gènes exprimés (NDRG1, EXT1, TP53, MDM2, APOBEC3B, etc.)
+- Connexions avec Ploidy : trois connexions impliquant TP53, PPP2R2A et AURKA
+
+3. Hubs et centralité :
+- Les principaux hubs (nœuds centraux) sont :
+  * tp53 (424.17)
+  * MCM6 (332.00)
+  * dck (300.00)
+  * rb1 (299.00)
+  * chek1 (294.00)
+
+4. Arêtes les plus importantes (centralité d'intermédiarité) :
+- chek1-dck (315.0)
+- rb1-chek1 (308.0)
+- CDCA7-MCM6 (300.5)
+- dck-bax (272.0)
+- bax-gpr126 (238.0)
+
+Le réseau montre une organisation centrée autour de TP53, un gène suppresseur de tumeur majeur, avec des connexions importantes impliquant des gènes liés au cycle cellulaire et à l'apoptose.
+
+# 2. Network reconstruction with the PC approach
+
+## 2.1 Premier chargement et exploration des données
+```{r 2.1}
+# Chargement des packages nécessaires
+library(miic)
+library(pcalg)
+library(bnlearn)
+library(igraph)
+library(qgraph)
+
+# Chargement des données
+data("cosmicCancer")
+
+# Exploration du jeu de données
+print("Dimensions du jeu de données:")
+print(dim(cosmicCancer))
+print("Aperçu de la structure:")
+str(cosmicCancer)
+```
+
+## 2.2 Application de l'approche PC et identification des problèmes
+```{r 2.2}
+# Préparation initiale des données
+data_clean <- cosmicCancer[complete.cases(cosmicCancer), ]
+data_clean_num <- data.frame(lapply(data_clean, function(x) {
+    if(is.factor(x)) {
+        as.numeric(x) - 1
+    } else {
+        x
+    }
+}))
+
+# Paramètres initiaux pour PC
+suffStat <- list(dm = data_clean_num, n = nrow(data_clean_num))
+alpha <- 0.01
+
+# Test de l'algorithme PC
+tryCatch({
+    pc_result <- pc(suffStat, 
+                    indepTest = disCItest,
+                    alpha = alpha,
+                    labels = colnames(data_clean_num))
+}, error = function(e) {
+    print("Problème identifié avec l'approche PC:")
+    print(e)
+    print("\nSolution proposée: Les données doivent être discrètes et commencer à 0")
+})
+```
+
+## 2.3 Nettoyage des données pour PC
+```{r 2.3}
+# Suppression des NA
+data_clean <- cosmicCancer[complete.cases(cosmicCancer), ]
+print("Proportion de données supprimées:")
+print(paste(round((nrow(cosmicCancer) - nrow(data_clean))/nrow(cosmicCancer) * 100, 2), "%"))
+print("Variables avec NA:")
+print(colnames(cosmicCancer)[colSums(is.na(cosmicCancer)) > 0])
+
+# Conversion appropriée des données
+data_clean_num <- as.data.frame(lapply(data_clean, function(x) {
+    if(is.factor(x)) {
+        return(as.numeric(x) - 1)  # Conversion des facteurs, commençant à 0
+    } else if(is.numeric(x)) {
+        # Discrétisation de Ploidy
+        return(as.numeric(cut(x, 
+                   breaks = quantile(x, probs = seq(0, 1, 0.25), na.rm = TRUE),
+                   labels = 0:3)))
+    }
+    return(x)
+}))
+
+# Suppression des variables constantes
+var_levels <- sapply(data_clean_num, function(x) length(unique(x)))
+constant_vars <- names(var_levels[var_levels == 1])
+data_clean_num <- data_clean_num[, var_levels > 1]
+print("Variables constantes supprimées:")
+print(constant_vars)
+```
+
+D'après les résultats obtenus :
+Proportion de données supprimées :
+
+0.99% des échantillons ont été supprimés (8 échantillons sur 807)
+
+Variable contenant des NA :
+
+Seule la variable "Ploidy" contenait des valeurs manquantes
+
+Variables constantes supprimées (14 variables ayant un seul niveau) :
+
+esm1, ebf4, qscn6l1, cenpa, kntc2, orc6l, aytl2, peci
+gstm3, cdkn2a, cdkn1a, foxo1, ppp2r2a, spdye7p
+
+Ce nettoyage était nécessaire pour pouvoir appliquer correctement l'approche PC sur les données, car l'algorithme nécessite des variables avec au moins deux niveaux et sans valeurs manquantes.
+
+
+## 2.4 Conversion et visualisation du réseau PC
+```{r 2.4}
+# Création de suffStat pour PC
+suffStat <- list(
+    dm = as.matrix(data_clean_num),
+    nlev = sapply(data_clean_num, function(x) length(unique(x))),
+    adaptDF = FALSE
+)
+
+# Application de PC
+pc_result <- pc(suffStat = suffStat,
+                indepTest = disCItest,
+                alpha = 0.01,
+                labels = colnames(data_clean_num))
+
+# Conversion en igraph
+pc_graph <- as(pc_result@graph, "graphNEL")
+igraph_pc <- graph_from_graphnel(pc_graph)
+
+# Coloration des nœuds
+V(igraph_pc)$color <- sapply(V(igraph_pc)$name, function(x) {
+    if(x == "Ploidy") "violet"
+    else if(grepl("^[a-z]", x)) "yellow"
+    else "green"
+})
+
+# Visualisation
+plot(igraph_pc,
+     layout = layout_with_fr(igraph_pc),
+     vertex.size = 4,
+     vertex.label.cex = 0.4,
+     vertex.label.color = "black",
+     edge.arrow.size = 0.2,
+     main = "Réseau PC (alpha = 0.01)")
+```
+
+## 2.5 Tests avec différentes valeurs d'alpha
+```{r 2.5}
+alpha_values <- c(0.01, 0.05, 0.1)
+
+for(alpha in alpha_values) {
+    pc_result <- pc(suffStat = suffStat,
+                    indepTest = disCItest,
+                    alpha = alpha,
+                    labels = colnames(data_clean_num))
+    
+    pc_graph <- as(pc_result@graph, "graphNEL")
+    igraph_pc <- graph_from_graphnel(pc_graph)
+    
+    plot(igraph_pc,
+         layout = layout_with_fr(igraph_pc),
+         vertex.size = 4,
+         vertex.label.cex = 0.4,
+         vertex.label.color = "black",
+         edge.arrow.size = 0.2,
+         main = paste("Réseau PC (alpha =", alpha, ")"))
+    
+    cat("\nStatistiques pour alpha =", alpha, ":\n")
+    cat("Nombre d'arêtes:", ecount(igraph_pc), "\n")
+    cat("Nombre de nœuds connectés:", sum(degree(igraph_pc) > 0), "\n")
+}
+```
+
+## 2.6 Analyse des relations et centralité
+```{r 2.6}
+# Analyse des connexions
+edges_pc <- as_data_frame(igraph_pc, what="edges")
+
+# Connexions mutation-expression
+mutation_expression_edges <- edges_pc[
+    (grepl("^[a-z]", edges_pc$from) & grepl("^[A-Z]", edges_pc$to)) |
+    (grepl("^[a-z]", edges_pc$to) & grepl("^[A-Z]", edges_pc$from)),
+]
+
+# Connexions avec Ploidy
+ploidy_edges <- edges_pc[
+    edges_pc$from == "Ploidy" | edges_pc$to == "Ploidy",
+]
+
+cat("\nConnexions entre mutations et expressions:\n")
+print(mutation_expression_edges)
+
+cat("\nConnexions avec Ploidy:\n")
+print(ploidy_edges)
+
+# Analyse de centralité
+betweenness_scores <- betweenness(igraph_pc)
+cat("\nTop 10 nœuds par centralité d'intermédiarité:\n")
+print(head(sort(betweenness_scores, decreasing=TRUE), 10))
+```
+
+
+On peut conclure que la structure du réseau evolue selon α :
+
+α = 0.01 : 69 arêtes et 63 nœuds connectés (réseau le plus restrictif)
+α = 0.05 : 99 arêtes et 90 nœuds connectés
+α = 0.1 : 108 arêtes et 99 nœuds connectés (réseau le plus dense)
+
+On observe que plus α augmente, plus le réseau devient dense avec davantage d'arêtes et de nœuds connectés.
+Les hubs principaux (nœuds centraux) basés sur la centralité d'intermédiarité sont :
+
+ECT2 (58)
+PRC1 (54)
+CCNE2 (52)
+MTDH et NUSAP1 (42)
+DIAPH3 (28)
+CENPA (23)
+GMPS (16)
+CCNE1 (13)
+FOXM1 (12)
+
+La plupart des hubs principaux sont des gènes surexprimés (en majuscules), suggérant leur rôle important dans le réseau de régulation. Le réseau semble particulièrement centré autour des gènes impliqués dans le cycle cellulaire (ECT2, CCNE2, CCNE1) et la division cellulaire (PRC1, NUSAP1).
+
+
+# 3. Network reconstruction with the MIIC approach
+
+## 3.1 Construction du réseau MIIC avec les paramètres par défaut
+
+```{r miic_base}
+# Chargement des données
+data("cosmicCancer")
+data_clean <- cosmicCancer[complete.cases(cosmicCancer), ]
+
+# Application de MIIC avec les paramètres de base
+miic_result_base <- miic(input_data = data_clean)
+
+# Affichage des résultats de base
+cat("Résultats avec paramètres par défaut:\n")
+cat("Nombre d'arêtes:", nrow(miic_result_base$edges), "\n")
+cat("Nombre de nœuds:", length(unique(c(miic_result_base$edges[,1], 
+                                       miic_result_base$edges[,2]))), "\n")
+```
+
+## 3.2 Test des différents paramètres de MIIC
+
+```{r miic_params}
+# 2. Explication et test des arguments de MIIC
+# Création d'un réseau MIIC avec différents réglages pour l'analyse de robustesse
+
+# Configuration 1 : Analyse standard
+miic_result_1 <- miic(input_data = data_clean, 
+                      conf_threshold = 0.001)  # Seuil de confiance strict
+
+# Configuration 2 : Seuil de confiance plus permissif
+miic_result_2 <- miic(input_data = data_clean, 
+                      conf_threshold = 0.05)   # Seuil de confiance plus relâché
+
+# Configuration 3 : Seuil encore plus permissif avec plus de permutations
+miic_result_3 <- miic(input_data = data_clean, 
+                      conf_threshold = 0.1)
+
+# Affichage des résultats comparatifs
+cat("Comparaison des réseaux avec différents seuils de confiance:\n")
+cat("\n1. Seuil strict (0.001):\n")
+cat("Nombre d'arêtes:", nrow(miic_result_1$edges), "\n")
+
+cat("\n2. Seuil moyen (0.05):\n")
+cat("Nombre d'arêtes:", nrow(miic_result_2$edges), "\n")
+
+cat("\n3. Seuil permissif (0.1):\n")
+cat("Nombre d'arêtes:", nrow(miic_result_3$edges), "\n")
+
+# Explication textuelle des paramètres
+cat("\nExplication des paramètres de MIIC:\n")
+cat("\nconf_threshold (Seuil de confiance):\n")
+cat("- Détermine le niveau de significativité statistique requis pour inclure une arête dans le réseau\n")
+cat("- Une valeur plus faible (ex: 0.001) donne un réseau plus conservateur\n")
+cat("- Une valeur plus élevée (ex: 0.1) inclut plus de connexions possibles\n")
+
+```
+
+## 3.3 Visualisation du réseau MIIC
+
+```{r miic_viz}
+# Visualisation comparative des réseaux
+par(mfrow=c(2,2))
+for(result in list(miic_result_1, miic_result_2, miic_result_3)) {
+    edges_df <- data.frame(
+        from = result$edges[,1],
+        to = result$edges[,2]
+    )
+    g <- graph_from_data_frame(edges_df, directed = TRUE)
+    
+    # Coloration des nœuds
+    V(g)$color <- sapply(V(g)$name, function(x) {
+        if(x == "Ploidy") "violet"
+        else if(grepl("^[a-z]", x)) "yellow"
+        else "green"
+    })
+    
+    plot(g,
+         layout = layout_with_fr(g),
+         vertex.size = 3,
+         vertex.label.cex = 0.3,
+         vertex.label.color = "black",
+         edge.arrow.size = 0.2,
+         main = paste("Seuil =", 
+                     ifelse(identical(result, miic_result_1), "0.001",
+                           ifelse(identical(result, miic_result_2), "0.05", "0.1"))))
+}
+```
+```{r installer_RCy3 }
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("RCy3")
+
+```
+```{r verif_installation}
+# Vérifier la version de RCy3
+packageVersion("RCy3")
+
+# Tester la connexion à Cytoscape
+cytoscapePing()
+
+```
+
+
+
+```{r Visualisation_avec_Cytoscape}
+# 3.4 Visualisation avec Cytoscape
+# Charger RCy3
+library(RCy3)
+
+# Préparer les données pour Cytoscape à partir du résultat MIIC
+miic_result <- miic_result_2  # Utiliser le résultat avec seuil moyen 0.05
+
+# Créer le dataframe des nœuds avec leurs attributs
+nodes_df <- data.frame(
+    id = unique(c(miic_result$edges[,1], miic_result$edges[,2])),
+    type = sapply(unique(c(miic_result$edges[,1], miic_result$edges[,2])), function(x) {
+        if(x == "Ploidy") "ploidy"
+        else if(grepl("^[a-z]", x)) "mutation"
+        else "expression"
+    }),
+    stringsAsFactors = FALSE
+)
+
+# Créer le dataframe des arêtes sans le score
+edges_df <- data.frame(
+    source = miic_result$edges[,1],
+    target = miic_result$edges[,2],
+    stringsAsFactors = FALSE
+)
+
+# Vérifier la connexion avec Cytoscape
+tryCatch({
+    # Vérifier si Cytoscape est en cours d'exécution
+    if(!cytoscapePing()) {
+        stop("Cytoscape n'est pas en cours d'exécution")
+    }
+    
+    # Créer un nouveau réseau
+    createNetworkFromDataFrames(
+        nodes = nodes_df,
+        edges = edges_df,
+        title = "MIIC Cancer Network",
+        collection = "MIIC Analysis"
+    )
+    
+    # Créer un style personnalisé
+    style.name <- "MIIC_Style"
+    createVisualStyle(style.name)
+    
+    # Définir le mapping des couleurs pour les types de nœuds
+    setNodeColorMapping(
+        "type",
+        c("ploidy", "mutation", "expression"),
+        c("#8B008B", "#FFD700", "#90EE90"),
+        style.name = style.name
+    )
+    
+    # Définir la taille des nœuds
+    setNodeSizeDefault(30, style.name = style.name)
+    
+    # Appliquer une mise en page
+    layoutNetwork('force-directed')
+    
+    # Ajuster la visualisation
+    setVisualStyle(style.name)
+    
+    # Exporter l'image
+    exportImage(
+        filename = "MIIC_Cytoscape_Network.png",
+        type = "PNG",
+        height = 2000,
+        width = 2000
+    )
+    
+    cat("Réseau créé avec succès dans Cytoscape et exporté en PNG\n")
+    
+}, error = function(e) {
+    cat("Erreur lors de l'interaction avec Cytoscape:\n")
+    cat(e$message, "\n")
+    cat("\nAssurez-vous que:\n")
+    cat("1. Cytoscape est installé et en cours d'exécution\n")
+    cat("2. Le port 1234 est disponible\n")
+    cat("3. La version de RCy3 est compatible avec votre version de Cytoscape\n")
+})
+```
+
+
+## 4 Analyse des connexions et mesures de centralité
+
+```{r miic_analysis}
+# 4 Analyse des connexions et mesures de centralité avec correction du layout
+
+# Calcul des mesures de centralité
+degree_scores <- degree(miic_graph)
+betweenness_scores <- betweenness(miic_graph)
+
+# Affichage des top 10 nœuds
+cat("\nTop 10 nœuds par centralité de degré:\n")
+print(head(sort(degree_scores, decreasing=TRUE), 10))
+
+# Préparation de la visualisation
+# Création du layout avant la visualisation
+set.seed(123)  # Pour la reproductibilité
+layout_mat <- layout_nicely(miic_graph)  # Alternative plus stable à fruchterman-reingold
+
+# Normalisation des tailles avec vérification des valeurs
+max_betweenness <- max(betweenness_scores, na.rm = TRUE)
+if(max_betweenness > 0) {
+    normalized_sizes <- 2 + (betweenness_scores/max_betweenness) * 8
+} else {
+    normalized_sizes <- rep(3, length(betweenness_scores))  # Taille par défaut si pas de variation
+}
+
+# Coloration des nœuds
+V(miic_graph)$color <- sapply(V(miic_graph)$name, function(x) {
+    if(x == "Ploidy") "violet"
+    else if(grepl("^[a-z]", x)) "yellow"
+    else "green"
+})
+
+# Visualisation avec gestion d'erreur
+tryCatch({
+    par(mar=c(1,1,1,1))  # Réduire les marges
+    plot(miic_graph,
+         layout = layout_mat,
+         vertex.size = normalized_sizes,
+         vertex.label.cex = 0.4,
+         vertex.label.color = "black",
+         edge.arrow.size = 0.2,
+         main = "Réseau MIIC avec centralité betweenness")
+}, error = function(e) {
+    cat("Erreur lors de la visualisation:", e$message, "\n")
+    # Alternative plus simple si la visualisation échoue
+    plot(miic_graph,
+         layout = layout_mat,
+         vertex.size = 3,
+         vertex.label.cex = 0.4)
+})
+
+# Analyse des hubs
+mean_degree <- mean(degree_scores)
+sd_degree <- sd(degree_scores)
+hub_threshold <- mean_degree + 2*sd_degree
+
+hub_nodes <- names(degree_scores[degree_scores > hub_threshold])
+cat("\nNœuds identifiés comme hubs (degré > moyenne + 2*sd):\n")
+print(hub_nodes)
+cat("\nDegré des hubs:\n")
+print(degree_scores[hub_nodes])
+```
+
