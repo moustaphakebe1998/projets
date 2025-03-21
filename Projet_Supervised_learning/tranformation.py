@@ -29,10 +29,6 @@ class Load :
 
     #on déclare de même cette méthode comme étant privée pour les même raisons
     def _data_to_df(self,fea, gnd, W) :
-        ''' 
-        On transforme nos données obtenues après récupération avec la fonction transform_data en dataframe
-        @Mouhamadou Lamine GNING
-        '''
         fea_df = pd.DataFrame(fea)
         gnd_df = pd.DataFrame(gnd)
 
@@ -43,7 +39,6 @@ class Load :
         ''' 
         Calcul des Matrices D et M sur les quelles on va travailler M
         les données sur les quelles porteront cette étude sont fea et M
-        @Mouhamadou Lamine GNING
         '''
 
         fea, gnd, W = self._transform_data(filename)
