@@ -1,6 +1,6 @@
 ---
-title: "TP3 - Network Reconstruction and Analysis"
-author: "Mouhamed Fadel"
+title: "Network Reconstruction and Analysis"
+author: "Moustapha"
 date: "2025-01-22"
 output: pdf_document
 ---
