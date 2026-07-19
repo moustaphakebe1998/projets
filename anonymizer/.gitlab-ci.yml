@@ -1,0 +1,4 @@
+include:
+  - project: 'data-hub/nifi_scripts/commons'
+    ref: main
+    file: '/templates/default-gitlab-ci.yml'
