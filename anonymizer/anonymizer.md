@@ -4,7 +4,7 @@
 
 | Référent     | Nom              |
 | ------------ | ---------------- |
-| SIAD   | Moustapha Kebe   |
+|    | Moustapha Kebe   |
 
 ---
 
@@ -436,7 +436,7 @@ anonymer_cli.py|--columns|telephone,email,nom|--mode|mask|--suffix|_anonyme|--se
 | Rôle       | Contact          |
 |------------|------------------|
 | Référent   | Moustapha Kebe   |
-| Équipe     | SIAD       |
+| Équipe     | ..       |
 
 ---
 
